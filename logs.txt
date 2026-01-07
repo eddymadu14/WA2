@@ -3015,3 +3015,21 @@
 [INFO] [2026-01-06T17:01:05.450Z] [WA:695932168a9879344ba3c854] No active auto-reply rules for this user.
 [INFO] [2026-01-06T17:04:52.351Z] [WA:695932168a9879344ba3c854] Message sent to 2349037051616@c.us
 [INFO] [2026-01-06T17:04:52.354Z] [WA:695932168a9879344ba3c854] Auto-reply sent to 2349037051616 using rule "Reply location" triggered by "location"
+[INFO] [2026-01-07T09:56:06.416Z] Message queue initialized
+[INFO] [2026-01-07T09:56:09.025Z] MongoDB connected successfully
+[INFO] [2026-01-07T09:56:09.057Z] Backend running on port 5000
+[INFO] [2026-01-07T09:56:09.162Z] [WA] Restoring 1 sessions
+[INFO] [2026-01-07T09:56:55.360Z] [WA:695932168a9879344ba3c854] Client initialized (awaiting ready)
+[INFO] [2026-01-07T09:56:55.361Z] [WA:695932168a9879344ba3c854] Restore initiated
+[INFO] [2026-01-07T09:56:55.362Z] All connected WhatsApp clients restored
+[INFO] [2026-01-07T09:56:55.362Z] Broadcast scheduler started
+[INFO] [2026-01-07T09:58:22.925Z] [WA:695932168a9879344ba3c854] Ready
+[INFO] [2026-01-07T11:54:30.267Z] [WA:695932168a9879344ba3c854] Message sent to status@broadcast
+[INFO] [2026-01-07T11:54:30.269Z] [WA:695932168a9879344ba3c854] Auto-reply sent to status using rule "Reply location" triggered by "place"
+[INFO] [2026-01-07T13:12:01.635Z] [WA:695932168a9879344ba3c854] Message sent to status@broadcast
+[INFO] [2026-01-07T13:12:01.636Z] [WA:695932168a9879344ba3c854] Auto-reply sent to status using rule "For price" triggered by "buy"
+[ERROR] [2026-01-07T13:12:01.648Z] [WA:695932168a9879344ba3c854] Lead capture failed: Path "phoneNumber" is not in schema, strict mode is `true`, and upsert is `true`.
+[INFO] [2026-01-07T13:40:51.850Z] Message queue initialized
+[INFO] [2026-01-07T13:40:54.733Z] MongoDB connected successfully
+[INFO] [2026-01-07T13:40:54.761Z] Backend running on port 5000
+[INFO] [2026-01-07T13:40:54.827Z] [WA] Restoring 1 sessions

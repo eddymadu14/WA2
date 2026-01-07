@@ -1,4 +1,4 @@
-import { autoReplyHandler } from "../services/autoReply.service.js";
+import { autoReplyHandler } from "../services/autoreply.service.js";
 import { evaluateAutoReplyIntent } from "../controllers/leads.controller.js";
 import { resolveLeadFromIntent } from "../services/lead.service.js";
 
