@@ -1,6 +1,6 @@
 import WhatsAppSession from "../models/WhatsAppSession.js";
 import pkg from "whatsapp-web.js";
-const { Client, LocalAuth } = pkg;
+const { Client } = pkg;
 
 import { logger } from "../utils/logger.js";
 import { handleIncomingMessage } from "../utils/message.dispatcher.js";
@@ -55,8 +55,11 @@ export async function initWhatsAppUser(userId) {
     return clients.get(key);
   }
 
+  // 🔹 Load existing session from MongoDB
+  const existingSession = await WhatsAppSession.findOne({ userId });
+
   const client = new Client({
-    authStrategy: new LocalAuth({ clientId: `user-${key}` }),
+    session: existingSession?.session || undefined, // use Mongo session if exists
     puppeteer: {
       headless: true,
       args: ["--no-sandbox", "--disable-setuid-sandbox"],
@@ -65,10 +68,28 @@ export async function initWhatsAppUser(userId) {
 
   /* ------------------ EVENTS ------------------ */
 
+  // 🔹 Save session on authentication
+  client.on("authenticated", async (session) => {
+    logger.info(`[WA:${userId}] Authenticated, saving session to MongoDB`);
+    await WhatsAppSession.updateOne(
+      { userId },
+      {
+        $set: {
+          session,            // 🔑 Save the actual WhatsApp auth payload
+          connected: true,
+          requiresQR: false,
+          qr: null,
+        },
+      },
+      { upsert: true }
+    );
+  });
+
   client.on("ready", async () => {
     readyClients.add(key);
     logger.info(`[WA:${userId}] Ready`);
 
+    // update status
     await WhatsAppSession.updateOne(
       { userId },
       { connected: true, requiresQR: false, qr: null },
@@ -104,9 +125,7 @@ export async function initWhatsAppUser(userId) {
     try {
       if (!msg?.body) return;
 
-      logger.debug(
-        `[WA:${userId}] Incoming message from ${msg.from}`
-      );
+      logger.debug(`[WA:${userId}] Incoming message from ${msg.from}`);
 
       await handleIncomingMessage({
         userId,
@@ -114,9 +133,7 @@ export async function initWhatsAppUser(userId) {
         msg,
       });
     } catch (err) {
-      logger.error(
-        `[WA:${userId}] Message handler error: ${err.message}`
-      );
+      logger.error(`[WA:${userId}] Message handler error: ${err.message}`);
     }
   });
 
@@ -140,9 +157,7 @@ export async function initAllWhatsAppUsers() {
       await initWhatsAppUser(session.userId);
       logger.info(`[WA:${session.userId}] Restore initiated`);
     } catch (err) {
-      logger.error(
-        `[WA:${session.userId}] Restore failed: ${err.message}`
-      );
+      logger.error(`[WA:${session.userId}] Restore failed: ${err.message}`);
     }
   }
 }

@@ -1,4 +1,3 @@
-
 import mongoose from "mongoose";
 
 const WhatsAppSessionSchema = new mongoose.Schema(
@@ -10,6 +9,12 @@ const WhatsAppSessionSchema = new mongoose.Schema(
       index: true,
     },
 
+    // 🔑 Persist the actual WhatsApp auth/session payload
+    session: {
+      type: Object,
+      default: null,
+    },
+
     connected: { type: Boolean, default: false },
     requiresQR: { type: Boolean, default: true },
     qr: { type: String, default: null },
@@ -18,4 +23,3 @@ const WhatsAppSessionSchema = new mongoose.Schema(
 );
 
 export default mongoose.model("WhatsAppSession", WhatsAppSessionSchema);
-

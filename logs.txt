@@ -3033,3 +3033,45 @@
 [INFO] [2026-01-07T13:40:54.733Z] MongoDB connected successfully
 [INFO] [2026-01-07T13:40:54.761Z] Backend running on port 5000
 [INFO] [2026-01-07T13:40:54.827Z] [WA] Restoring 1 sessions
+[INFO] [2026-01-07T15:30:36.033Z] Message queue initialized
+[INFO] [2026-01-07T15:30:38.089Z] MongoDB connected successfully
+[INFO] [2026-01-07T15:30:38.110Z] Backend running on port 5000
+[INFO] [2026-01-07T15:30:38.160Z] [WA] Restoring 1 sessions
+[INFO] [2026-01-07T15:31:01.029Z] [WA:695932168a9879344ba3c854] Client initialized (awaiting ready)
+[INFO] [2026-01-07T15:31:01.031Z] [WA:695932168a9879344ba3c854] Restore initiated
+[INFO] [2026-01-07T15:31:01.032Z] All connected WhatsApp clients restored
+[INFO] [2026-01-07T15:31:01.034Z] Broadcast scheduler started
+[INFO] [2026-01-07T15:31:21.753Z] [WA:695932168a9879344ba3c854] Ready
+[ERROR] [2026-01-07T15:33:03.743Z] Error on POST /api/users/register -> User already exists
+[ERROR] [2026-01-07T15:33:06.163Z] Error on POST /api/users/register -> User already exists
+[ERROR] [2026-01-07T15:33:36.177Z] Error on POST /api/users/register -> User already exists
+[ERROR] [2026-01-07T15:37:45.091Z] Error on POST /api/users/register -> User already exists
+[INFO] [2026-01-07T18:32:29.886Z] Message queue initialized
+[INFO] [2026-01-07T18:32:33.035Z] MongoDB connected successfully
+[INFO] [2026-01-07T18:32:33.057Z] Backend running on port 5000
+[INFO] [2026-01-07T18:32:33.133Z] [WA] Restoring 1 sessions
+[INFO] [2026-01-07T18:33:45.723Z] Message queue initialized
+[INFO] [2026-01-07T18:33:47.964Z] MongoDB connected successfully
+[INFO] [2026-01-07T18:33:47.990Z] Backend running on port 5000
+[INFO] [2026-01-07T18:33:48.051Z] [WA] Restoring 1 sessions
+[ERROR] [2026-01-07T18:37:47.014Z] [WA:695932168a9879344ba3c854] Restore failed: Navigation failed because browser has disconnected!
+[INFO] [2026-01-07T18:37:47.067Z] Broadcast scheduler started
+[INFO] [2026-01-07T18:37:47.042Z] All connected WhatsApp clients restored
+[INFO] [2026-01-08T09:26:51.322Z] Message queue initialized
+[INFO] [2026-01-08T09:26:53.940Z] MongoDB connected successfully
+[INFO] [2026-01-08T09:26:53.965Z] Backend running on port 5000
+[INFO] [2026-01-08T09:26:54.017Z] [WA] Restoring 0 sessions
+[INFO] [2026-01-08T09:26:54.017Z] All connected WhatsApp clients restored
+[INFO] [2026-01-08T09:26:54.018Z] Broadcast scheduler started
+[INFO] [2026-01-08T11:02:56.696Z] Message queue initialized
+[INFO] [2026-01-08T11:02:59.291Z] MongoDB connected successfully
+[INFO] [2026-01-08T11:02:59.318Z] Backend running on port 5000
+[INFO] [2026-01-08T11:02:59.359Z] [WA] Restoring 0 sessions
+[INFO] [2026-01-08T11:02:59.359Z] All connected WhatsApp clients restored
+[INFO] [2026-01-08T11:02:59.360Z] Broadcast scheduler started
+[INFO] [2026-01-08T11:05:29.782Z] Message queue initialized
+[INFO] [2026-01-08T11:05:31.347Z] MongoDB connected successfully
+[INFO] [2026-01-08T11:05:31.370Z] Backend running on port 5000
+[INFO] [2026-01-08T11:05:31.395Z] [WA] Restoring 0 sessions
+[INFO] [2026-01-08T11:05:31.395Z] All connected WhatsApp clients restored
+[INFO] [2026-01-08T11:05:31.397Z] Broadcast scheduler started
