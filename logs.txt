@@ -3075,3 +3075,33 @@
 [INFO] [2026-01-08T11:05:31.395Z] [WA] Restoring 0 sessions
 [INFO] [2026-01-08T11:05:31.395Z] All connected WhatsApp clients restored
 [INFO] [2026-01-08T11:05:31.397Z] Broadcast scheduler started
+[INFO] [2026-01-08T11:29:23.350Z] Message queue initialized
+[INFO] [2026-01-08T11:29:25.292Z] MongoDB connected successfully
+[INFO] [2026-01-08T11:29:25.316Z] Backend running on port 5000
+[INFO] [2026-01-08T11:29:25.364Z] [WA] Restoring 0 sessions
+[INFO] [2026-01-08T11:29:25.365Z] All connected WhatsApp clients restored
+[INFO] [2026-01-08T11:29:25.365Z] Broadcast scheduler started
+[INFO] [2026-01-08T11:33:51.572Z] Message queue initialized
+[INFO] [2026-01-08T11:33:53.822Z] MongoDB connected successfully
+[INFO] [2026-01-08T11:33:53.836Z] Backend running on port 5000
+[INFO] [2026-01-08T11:33:53.869Z] [WA] Restoring 0 sessions
+[INFO] [2026-01-08T11:33:53.870Z] All connected WhatsApp clients restored
+[INFO] [2026-01-08T11:33:53.870Z] Broadcast scheduler started
+[INFO] [2026-01-08T11:49:44.354Z] Message queue initialized
+[INFO] [2026-01-08T11:49:45.992Z] MongoDB connected successfully
+[INFO] [2026-01-08T11:49:46.006Z] Backend running on port 5000
+[INFO] [2026-01-08T11:49:46.060Z] [WA] Restoring 0 sessions
+[INFO] [2026-01-08T11:49:46.061Z] All connected WhatsApp clients restored
+[INFO] [2026-01-08T11:49:46.062Z] Broadcast scheduler started
+[INFO] [2026-01-08T11:56:48.259Z] Message queue initialized
+[INFO] [2026-01-08T11:56:49.811Z] MongoDB connected successfully
+[INFO] [2026-01-08T11:56:49.834Z] Backend running on port 5000
+[INFO] [2026-01-08T11:56:49.878Z] [WA] Restoring 0 sessions
+[INFO] [2026-01-08T11:56:49.879Z] All connected WhatsApp clients restored
+[INFO] [2026-01-08T11:56:49.879Z] Broadcast scheduler started
+[INFO] [2026-01-08T12:01:14.928Z] Message queue initialized
+[INFO] [2026-01-08T12:01:16.705Z] MongoDB connected successfully
+[INFO] [2026-01-08T12:01:16.719Z] Backend running on port 5000
+[INFO] [2026-01-08T12:01:16.766Z] [WA] Restoring 0 sessions
+[INFO] [2026-01-08T12:01:16.767Z] All connected WhatsApp clients restored
+[INFO] [2026-01-08T12:01:16.768Z] Broadcast scheduler started

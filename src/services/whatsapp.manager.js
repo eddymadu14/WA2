@@ -62,13 +62,22 @@ export async function initWhatsAppUser(userId) {
     session: existingSession?.session || undefined, // use Mongo session if exists
     puppeteer: {
       headless: true,
-      args: ["--no-sandbox", "--disable-setuid-sandbox"],
+      executablePath: process.env.CHROMIUM_PATH || "/usr/bin/chromium-browser",
+      args: [
+        "--no-sandbox",
+        "--disable-setuid-sandbox",
+        "--disable-dev-shm-usage",
+        "--disable-accelerated-2d-canvas",
+        "--no-first-run",
+        "--no-zygote",
+        "--single-process",
+        "--disable-gpu",
+      ],
     },
   });
 
   /* ------------------ EVENTS ------------------ */
 
-  // 🔹 Save session on authentication
   client.on("authenticated", async (session) => {
     logger.info(`[WA:${userId}] Authenticated, saving session to MongoDB`);
     await WhatsAppSession.updateOne(
@@ -89,7 +98,6 @@ export async function initWhatsAppUser(userId) {
     readyClients.add(key);
     logger.info(`[WA:${userId}] Ready`);
 
-    // update status
     await WhatsAppSession.updateOne(
       { userId },
       { connected: true, requiresQR: false, qr: null },
