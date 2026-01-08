@@ -3105,3 +3105,20 @@
 [INFO] [2026-01-08T12:01:16.766Z] [WA] Restoring 0 sessions
 [INFO] [2026-01-08T12:01:16.767Z] All connected WhatsApp clients restored
 [INFO] [2026-01-08T12:01:16.768Z] Broadcast scheduler started
+[INFO] [2026-01-08T12:13:32.435Z] Message queue initialized
+[INFO] [2026-01-08T12:13:34.059Z] MongoDB connected successfully
+[INFO] [2026-01-08T12:13:34.072Z] Backend running on port 5000
+[INFO] [2026-01-08T12:13:34.123Z] [WA] Restoring 0 sessions
+[INFO] [2026-01-08T12:13:34.123Z] All connected WhatsApp clients restored
+[INFO] [2026-01-08T12:13:34.124Z] Broadcast scheduler started
+[INFO] [2026-01-08T12:14:22.127Z] [WA:695932168a9879344ba3c854] QR generated
+[INFO] [2026-01-08T12:14:22.160Z] [WA:695932168a9879344ba3c854] Client initialized (awaiting ready)
+[INFO] [2026-01-08T12:15:09.446Z] [WA:695932168a9879344ba3c854] Authenticated, saving session to MongoDB
+[INFO] [2026-01-08T12:15:19.706Z] [WA:695932168a9879344ba3c854] Ready
+[INFO] [2026-01-08T12:20:14.212Z] [WA:695932168a9879344ba3c854] Authenticated, saving session to MongoDB
+[INFO] [2026-01-08T12:20:14.245Z] [WA:695932168a9879344ba3c854] Authenticated, saving session to MongoDB
+[INFO] [2026-01-08T12:20:14.250Z] [WA:695932168a9879344ba3c854] QR generated
+[INFO] [2026-01-08T12:20:41.539Z] [WA:695932168a9879344ba3c854] Ready
+[INFO] [2026-01-08T12:20:41.543Z] [WA:695932168a9879344ba3c854] Ready
+[WARN] [2026-01-08T12:20:45.052Z] [WA:695932168a9879344ba3c854] Disconnected: LOGOUT
+[INFO] [2026-01-08T12:20:58.317Z] [WA:695932168a9879344ba3c854] QR generated
