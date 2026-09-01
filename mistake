@@ -1,327 +1,2088 @@
-Good. I’m going to do this properly and cleanly, with one coherent backend flow, no fragmentation, no duplicate responsibilities, and fully aligned with your intent-gated + hot-lead escalation rule.
+Yes. I inspected the actual current WA2 repository before designing this rewrite. The current manager still uses the old session object from MongoDB, registers the client only after initialize(), and marks Mongo connected: true during authenticated rather than ready. �
+GitHub +1
+We're going to fix that and add Supabase Storage persistence without making your development environment depend on Supabase.
+The rule will be:
+DEVELOPMENT
+whatsapp-web.js
+    ↓
+LocalAuth
+    ↓
+local .wwebjs_auth/
+PRODUCTION
+whatsapp-web.js
+    ↓
+RemoteAuth
+    ↓
+Supabase Storage
+    ↓
+persistent WhatsApp authentication
+RemoteAuth is specifically designed around a remote store and periodically archives the WhatsApp profile; its store interface is sessionExists, save, extract, and delete. �
+GitHub
+This means dev does not touch Supabase at all.
+1. Install Supabase
+From your WA2 backend:
+npm install @supabase/supabase-js
+Supabase officially provides @supabase/supabase-js as the JavaScript SDK. �
+Supabase
+You don't need a separate Chromium installation for this architecture. Your existing whatsapp-web.js + Puppeteer setup remains.
+2. Create src/config/supabase.js
+This file is only actually used in production.
+Writing
+// src/config/supabase.js
 
-I’ll do three things only in this message:
+import { createClient } from "@supabase/supabase-js";
 
-1. Define the final backend architecture (authoritative)
+const isProduction =
+  process.env.NODE_ENV === "production";
 
+const supabaseUrl =
+  process.env.SUPABASE_URL;
 
-2. Show the exact logics + functions that must exist (with clean code)
+const supabaseServiceRoleKey =
+  process.env.SUPABASE_SERVICE_ROLE_KEY;
 
+const bucket =
+  process.env.SUPABASE_WHATSAPP_BUCKET ||
+  "whatsapp-sessions";
 
-3. Explain how everything wires together at runtime
+if (
+  isProduction &&
+  (!supabaseUrl || !supabaseServiceRoleKey)
+) {
+  throw new Error(
+    "Production requires SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY"
+  );
+}
 
+export const supabase =
+  isProduction && supabaseUrl && supabaseServiceRoleKey
+    ? createClient(
+        supabaseUrl,
+        supabaseServiceRoleKey,
+        {
+          auth: {
+            persistSession: false,
+            autoRefreshToken: false,
+          },
+        }
+      )
+    : null;
 
+export const supabaseBucket = bucket;
 
-Then we stop.
-After that, you paste Lead.tsx and we wire the frontend without touching business logic again.
+export function isSupabaseEnabled() {
+  return Boolean(
+    isProduction &&
+      supabase &&
+      supabaseUrl &&
+      supabaseServiceRoleKey
+  );
+}
+The bucket should be private. Supabase documents that private buckets aren't publicly accessible through public URLs. �
+Supabase
+3. Create the Supabase RemoteAuth store
+Create:
+src/services/whatsapp/supabaseRemoteStore.js
+Create the directory if it doesn't exist.
+Writing
+// src/services/whatsapp/supabaseRemoteStore.js
 
+import fs from "fs/promises";
+import path from "path";
 
----
+export class SupabaseRemoteStore {
+  constructor({
+    supabase,
+    bucket,
+    dataPath,
+  }) {
+    if (!supabase) {
+      throw new Error(
+        "Supabase client is required for SupabaseRemoteStore"
+      );
+    }
 
-✅ FINAL BACKEND ARCHITECTURE (LOCKED)
+    if (!bucket) {
+      throw new Error(
+        "Supabase Storage bucket is required"
+      );
+    }
 
-Core rules (non-negotiable)
+    if (!dataPath) {
+      throw new Error(
+        "RemoteAuth dataPath is required"
+      );
+    }
 
-AutoReply is the ONLY gatekeeper
+    this.supabase = supabase;
+    this.bucket = bucket;
+    this.dataPath = path.resolve(dataPath);
+  }
 
-One phone = one lead
+  getArchivePath(session) {
+    return path.join(
+      this.dataPath,
+      `${session}.zip`
+    );
+  }
 
-Keyword hits accumulate
+  getStoragePath(session) {
+    return `${session}/${session}.zip`;
+  }
 
-Hot lead = keywordHitCount ≥ 3
+  async sessionExists({ session }) {
+    const storagePath =
+      this.getStoragePath(session);
 
-No lead exists without intent
+    const directory = session;
+    const filename = `${session}.zip`;
 
+    const {
+      data,
+      error,
+    } = await this.supabase.storage
+      .from(this.bucket)
+      .list(directory, {
+        limit: 1,
+        search: filename,
+      });
 
+    if (error) {
+      throw new Error(
+        `Supabase sessionExists failed: ${error.message}`
+      );
+    }
 
----
+    return Boolean(
+      data?.some(
+        (file) => file.name === filename
+      )
+    );
+  }
 
-🧱 SINGLE SOURCE OF TRUTH
+  async save({ session }) {
+    const archivePath =
+      this.getArchivePath(session);
 
-There must be ONE entry point that handles incoming WhatsApp messages.
+    try {
+      await fs.access(archivePath);
+    } catch {
+      throw new Error(
+        `RemoteAuth archive does not exist: ${archivePath}`
+      );
+    }
 
-Incoming WhatsApp Message
-        ↓
-AutoReply Intent Evaluation
-        ↓ (only if matched)
-Resolve / Update Lead (accumulate intent)
-        ↓
-Send AutoReply
+    const fileBuffer =
+      await fs.readFile(archivePath);
 
-🚫 No other file creates leads
-🚫 No route creates leads
-🚫 No UI creates leads
+    const storagePath =
+      this.getStoragePath(session);
 
+    const {
+      error,
+    } = await this.supabase.storage
+      .from(this.bucket)
+      .upload(
+        storagePath,
+        fileBuffer,
+        {
+          contentType:
+            "application/zip",
 
----
+          upsert: true,
 
-1️⃣ LEAD MODEL (FIXED + NORMALIZED)
+          cacheControl:
+            "3600",
+        }
+      );
 
-This is the correct and complete schema based on everything you built + what you want.
+    if (error) {
+      throw new Error(
+        `Supabase session upload failed: ${error.message}`
+      );
+    }
+
+    console.log(
+      `[RemoteAuth] Session uploaded: ${session}`
+    );
+  }
+
+  async extract({
+    session,
+    path: destinationPath,
+  }) {
+    const storagePath =
+      this.getStoragePath(session);
+
+    const {
+      data,
+      error,
+    } = await this.supabase.storage
+      .from(this.bucket)
+      .download(storagePath);
+
+    if (error) {
+      throw new Error(
+        `Supabase session download failed: ${error.message}`
+      );
+    }
+
+    if (!data) {
+      throw new Error(
+        `Supabase returned no session data for ${session}`
+      );
+    }
+
+    const arrayBuffer =
+      await data.arrayBuffer();
+
+    const buffer =
+      Buffer.from(arrayBuffer);
+
+    await fs.mkdir(
+      path.dirname(destinationPath),
+      {
+        recursive: true,
+      }
+    );
+
+    await fs.writeFile(
+      destinationPath,
+      buffer
+    );
+
+    console.log(
+      `[RemoteAuth] Session downloaded: ${session}`
+    );
+  }
+
+  async delete({ session }) {
+    const storagePath =
+      this.getStoragePath(session);
+
+    const {
+      error,
+    } = await this.supabase.storage
+      .from(this.bucket)
+      .remove([
+        storagePath,
+      ]);
+
+    if (error) {
+      throw new Error(
+        `Supabase session deletion failed: ${error.message}`
+      );
+    }
+
+    console.log(
+      `[RemoteAuth] Session deleted: ${session}`
+    );
+  }
+}
+Supabase's Storage API supports upload, download, and remove; uploads can use upsert: true, which is important because RemoteAuth periodically overwrites the stored archive. �
+Supabase +1
+4. Completely rewrite whatsapp.manager.js
+This is the most important rewrite.
+Your current manager stores the old WhatsApp session payload in MongoDB and only puts the client into the runtime map after initialize(). �
+GitHub
+Replace the entire file with:
+Writing
+// src/services/whatsapp.manager.js
+
+import path from "path";
+
+import pkg from "whatsapp-web.js";
+
+const {
+  Client,
+  LocalAuth,
+  RemoteAuth,
+} = pkg;
+
+import WhatsAppSession from "../models/WhatsAppSession.js";
+
+import {
+  supabase,
+  supabaseBucket,
+  isSupabaseEnabled,
+} from "../config/supabase.js";
+
+import {
+  SupabaseRemoteStore,
+} from "./whatsapp/supabaseRemoteStore.js";
+
+import {
+  logger,
+} from "../utils/logger.js";
+
+import {
+  handleIncomingMessage,
+} from "../utils/message.dispatcher.js";
+
+/*
+|--------------------------------------------------------------------------
+| Runtime client registry
+|--------------------------------------------------------------------------
+*/
+
+const clients = new Map();
+
+const readyClients = new Set();
+
+const initializationPromises =
+  new Map();
+
+/*
+|--------------------------------------------------------------------------
+| Configuration
+|--------------------------------------------------------------------------
+*/
+
+const isProduction =
+  process.env.NODE_ENV === "production";
+
+const whatsappDataPath =
+  process.env.WHATSAPP_DATA_PATH ||
+  path.resolve(
+    process.cwd(),
+    ".wwebjs_auth"
+  );
+
+const remoteAuthBackupInterval = Math.max(
+  Number(
+    process.env.WHATSAPP_BACKUP_INTERVAL_MS ||
+      300000
+  ),
+  60000
+);
+
+/*
+|--------------------------------------------------------------------------
+| Helpers
+|--------------------------------------------------------------------------
+*/
+
+function keyFor(userId) {
+  return String(userId);
+}
+
+async function updateSession(
+  userId,
+  update
+) {
+  try {
+    await WhatsAppSession.updateOne(
+      {
+        userId,
+      },
+      {
+        $set: update,
+      },
+      {
+        upsert: true,
+      }
+    );
+  } catch (error) {
+    logger.error(
+      `[WA:${userId}] Failed to update session state: ${error.message}`
+    );
+  }
+}
+
+function createAuthStrategy(userId) {
+  const key = keyFor(userId);
+
+  /*
+  |--------------------------------------------------------------------------
+  | DEVELOPMENT
+  |--------------------------------------------------------------------------
+  |
+  | LocalAuth stores the WhatsApp browser profile locally.
+  | Supabase is completely bypassed.
+  |
+  */
+
+  if (!isProduction) {
+    logger.info(
+      `[WA:${userId}] Using LocalAuth for development`
+    );
+
+    return new LocalAuth({
+      clientId: key,
+
+      dataPath:
+        whatsappDataPath,
+    });
+  }
+
+  /*
+  |--------------------------------------------------------------------------
+  | PRODUCTION
+  |--------------------------------------------------------------------------
+  |
+  | Production MUST use Supabase-backed RemoteAuth.
+  |
+  */
+
+  if (!isSupabaseEnabled()) {
+    throw new Error(
+      "Production WhatsApp requires Supabase Storage configuration"
+    );
+  }
+
+  const store =
+    new SupabaseRemoteStore({
+      supabase,
+
+      bucket:
+        supabaseBucket,
+
+      dataPath:
+        whatsappDataPath,
+    });
+
+  logger.info(
+    `[WA:${userId}] Using Supabase RemoteAuth`
+  );
+
+  return new RemoteAuth({
+    clientId: key,
+
+    store,
+
+    dataPath:
+      whatsappDataPath,
+
+    backupSyncIntervalMs:
+      remoteAuthBackupInterval,
+  });
+}
+
+/*
+|--------------------------------------------------------------------------
+| Public: getClient
+|--------------------------------------------------------------------------
+*/
+
+export function getClient(userId) {
+  const key = keyFor(userId);
+
+  if (!readyClients.has(key)) {
+    return null;
+  }
+
+  return clients.get(key) || null;
+}
+
+/*
+|--------------------------------------------------------------------------
+| Public: isClientReady
+|--------------------------------------------------------------------------
+*/
+
+export function isClientReady(userId) {
+  const key = keyFor(userId);
+
+  return (
+    readyClients.has(key) &&
+    clients.has(key)
+  );
+}
+
+/*
+|--------------------------------------------------------------------------
+| Public: waitForClientReady
+|--------------------------------------------------------------------------
+*/
+
+export async function waitForClientReady(
+  userId,
+  timeout = 60000
+) {
+  const key = keyFor(userId);
+
+  const start =
+    Date.now();
+
+  while (
+    Date.now() - start <
+    timeout
+  ) {
+    if (
+      readyClients.has(key) &&
+      clients.has(key)
+    ) {
+      return true;
+    }
+
+    await new Promise(
+      (resolve) =>
+        setTimeout(resolve, 500)
+    );
+  }
+
+  throw new Error(
+    `WhatsApp client is not READY for user ${userId}`
+  );
+}
+
+/*
+|--------------------------------------------------------------------------
+| Public: setClient
+|--------------------------------------------------------------------------
+*/
+
+export function setClient(
+  userId,
+  client
+) {
+  clients.set(
+    keyFor(userId),
+    client
+  );
+}
+
+/*
+|--------------------------------------------------------------------------
+| Client destruction
+|--------------------------------------------------------------------------
+*/
+
+export async function destroyClient(
+  userId,
+  logout = false
+) {
+  const key =
+    keyFor(userId);
+
+  const client =
+    clients.get(key);
+
+  if (!client) {
+    readyClients.delete(key);
+
+    await updateSession(
+      userId,
+      {
+        connected: false,
+        state: "DISCONNECTED",
+        requiresQR: true,
+        qr: null,
+      }
+    );
+
+    return;
+  }
+
+  try {
+    if (
+      logout &&
+      typeof client.logout ===
+        "function"
+    ) {
+      await client.logout();
+    }
+  } catch (error) {
+    logger.warn(
+      `[WA:${userId}] Logout failed: ${error.message}`
+    );
+  }
+
+  try {
+    await client.destroy();
+  } catch (error) {
+    logger.warn(
+      `[WA:${userId}] Destroy failed: ${error.message}`
+    );
+  }
+
+  clients.delete(key);
+
+  readyClients.delete(key);
+
+  initializationPromises.delete(
+    key
+  );
+
+  await updateSession(
+    userId,
+    {
+      connected: false,
+      state: "DISCONNECTED",
+      requiresQR: true,
+      qr: null,
+    }
+  );
+
+  logger.info(
+    `[WA:${userId}] Client destroyed`
+  );
+}
+
+/*
+|--------------------------------------------------------------------------
+| Initialize WhatsApp
+|--------------------------------------------------------------------------
+*/
+
+export async function initWhatsAppUser(
+  userId
+) {
+  const key =
+    keyFor(userId);
+
+  /*
+  |--------------------------------------------------------------------------
+  | Already READY
+  |--------------------------------------------------------------------------
+  */
+
+  if (
+    clients.has(key) &&
+    readyClients.has(key)
+  ) {
+    logger.info(
+      `[WA:${userId}] Client already READY`
+    );
+
+    return clients.get(key);
+  }
+
+  /*
+  |--------------------------------------------------------------------------
+  | Already initializing
+  |--------------------------------------------------------------------------
+  */
+
+  if (
+    initializationPromises.has(key)
+  ) {
+    return initializationPromises.get(
+      key
+    );
+  }
+
+  /*
+  |--------------------------------------------------------------------------
+  | Create initialization promise
+  |--------------------------------------------------------------------------
+  */
+
+  const initialization =
+    initializeClient(userId);
+
+  initializationPromises.set(
+    key,
+    initialization
+  );
+
+  try {
+    return await initialization;
+  } finally {
+    initializationPromises.delete(
+      key
+    );
+  }
+}
+
+/*
+|--------------------------------------------------------------------------
+| Actual client initialization
+|--------------------------------------------------------------------------
+*/
+
+async function initializeClient(
+  userId
+) {
+  const key =
+    keyFor(userId);
+
+  /*
+  |--------------------------------------------------------------------------
+  | Prevent duplicate runtime clients
+  |--------------------------------------------------------------------------
+  */
+
+  const existing =
+    clients.get(key);
+
+  if (existing) {
+    return existing;
+  }
+
+  await updateSession(
+    userId,
+    {
+      state: "INITIALIZING",
+      connected: false,
+      requiresQR: false,
+      qr: null,
+    }
+  );
+
+  const authStrategy =
+    createAuthStrategy(userId);
+
+  const client =
+    new Client({
+      authStrategy,
+
+      puppeteer: {
+        headless: true,
+
+        args: [
+          "--no-sandbox",
+          "--disable-setuid-sandbox",
+          "--disable-dev-shm-usage",
+          "--disable-gpu",
+          "--no-first-run",
+          "--no-zygote",
+        ],
+
+        executablePath:
+          process.env.PUPPETEER_EXECUTABLE_PATH ||
+          undefined,
+      },
+    });
+
+  /*
+  |--------------------------------------------------------------------------
+  | IMPORTANT
+  |--------------------------------------------------------------------------
+  |
+  | Register the client BEFORE initialize().
+  |
+  */
+
+  clients.set(
+    key,
+    client
+  );
+
+  /*
+  |--------------------------------------------------------------------------
+  | QR
+  |--------------------------------------------------------------------------
+  */
+
+  client.on(
+    "qr",
+    async (qr) => {
+      logger.info(
+        `[WA:${userId}] QR generated`
+      );
+
+      await updateSession(
+        userId,
+        {
+          state: "QR_READY",
+          connected: false,
+          requiresQR: true,
+          qr,
+        }
+      );
+    }
+  );
+
+  /*
+  |--------------------------------------------------------------------------
+  | Loading
+  |--------------------------------------------------------------------------
+  */
+
+  client.on(
+    "loading_screen",
+    async (
+      percent,
+      message
+    ) => {
+      logger.info(
+        `[WA:${userId}] Loading ${percent}% - ${message}`
+      );
+
+      await updateSession(
+        userId,
+        {
+          state: "LOADING",
+          connected: false,
+          requiresQR: false,
+        }
+      );
+    }
+  );
+
+  /*
+  |--------------------------------------------------------------------------
+  | Authenticated
+  |--------------------------------------------------------------------------
+  */
+
+  client.on(
+    "authenticated",
+    async () => {
+      logger.info(
+        `[WA:${userId}] Authenticated`
+      );
+
+      /*
+       * IMPORTANT:
+       *
+       * Do NOT mark connected=true here.
+       *
+       * Authentication != READY.
+       */
+
+      await updateSession(
+        userId,
+        {
+          state: "AUTHENTICATED",
+          connected: false,
+          requiresQR: false,
+          qr: null,
+        }
+      );
+    }
+  );
+
+  /*
+  |--------------------------------------------------------------------------
+  | Ready
+  |--------------------------------------------------------------------------
+  */
+
+  client.on(
+    "ready",
+    async () => {
+      readyClients.add(key);
+
+      logger.info(
+        `[WA:${userId}] READY`
+      );
+
+      await updateSession(
+        userId,
+        {
+          state: "READY",
+          connected: true,
+          requiresQR: false,
+          qr: null,
+          lastConnectedAt:
+            new Date(),
+          lastError: null,
+        }
+      );
+    }
+  );
+
+  /*
+  |--------------------------------------------------------------------------
+  | Auth failure
+  |--------------------------------------------------------------------------
+  */
+
+  client.on(
+    "auth_failure",
+    async (message) => {
+      logger.error(
+        `[WA:${userId}] Authentication failure: ${message}`
+      );
+
+      readyClients.delete(key);
+
+      await updateSession(
+        userId,
+        {
+          state: "AUTH_FAILURE",
+          connected: false,
+          requiresQR: true,
+          qr: null,
+          lastError:
+            String(message),
+        }
+      );
+    }
+  );
+
+  /*
+  |--------------------------------------------------------------------------
+  | Disconnected
+  |--------------------------------------------------------------------------
+  */
+
+  client.on(
+    "disconnected",
+    async (reason) => {
+      logger.warn(
+        `[WA:${userId}] Disconnected: ${reason}`
+      );
+
+      readyClients.delete(key);
+
+      clients.delete(key);
+
+      initializationPromises.delete(
+        key
+      );
+
+      await updateSession(
+        userId,
+        {
+          state: "DISCONNECTED",
+          connected: false,
+          requiresQR: true,
+          qr: null,
+          lastDisconnectedAt:
+            new Date(),
+          lastError:
+            String(reason),
+        }
+      );
+    }
+  );
+
+  /*
+  |--------------------------------------------------------------------------
+  | Incoming messages
+  |--------------------------------------------------------------------------
+  */
+
+  client.on(
+    "message",
+    async (msg) => {
+      try {
+        if (!msg?.body) {
+          return;
+        }
+
+        logger.debug(
+          `[WA:${userId}] Incoming message from ${msg.from}`
+        );
+
+        await handleIncomingMessage({
+          userId,
+          client,
+          msg,
+        });
+      } catch (error) {
+        logger.error(
+          `[WA:${userId}] Message handler error: ${error.message}`
+        );
+      }
+    }
+  );
+
+  /*
+  |--------------------------------------------------------------------------
+  | General error
+  |--------------------------------------------------------------------------
+  */
+
+  client.on(
+    "error",
+    async (error) => {
+      logger.error(
+        `[WA:${userId}] Client error: ${error.message}`
+      );
+
+      await updateSession(
+        userId,
+        {
+          lastError:
+            error.message,
+        }
+      );
+    }
+  );
+
+  /*
+  |--------------------------------------------------------------------------
+  | Initialize
+  |--------------------------------------------------------------------------
+  */
+
+  try {
+    logger.info(
+      `[WA:${userId}] Initializing client`
+    );
+
+    await client.initialize();
+
+    logger.info(
+      `[WA:${userId}] initialize() completed; waiting for READY`
+    );
+
+    return client;
+  } catch (error) {
+    logger.error(
+      `[WA:${userId}] Initialization failed: ${error.message}`
+    );
+
+    readyClients.delete(key);
+
+    clients.delete(key);
+
+    await updateSession(
+      userId,
+      {
+        state: "ERROR",
+        connected: false,
+        requiresQR: true,
+        qr: null,
+        lastError:
+          error.message,
+      }
+    );
+
+    try {
+      await client.destroy();
+    } catch {}
+
+    throw error;
+  }
+}
+
+/*
+|--------------------------------------------------------------------------
+| Restore all previously connected users
+|--------------------------------------------------------------------------
+*/
+
+export async function initAllWhatsAppUsers() {
+  const sessions =
+    await WhatsAppSession.find({
+      connected: true,
+    });
+
+  logger.info(
+    `[WA] Restoring ${sessions.length} WhatsApp clients`
+  );
+
+  /*
+   * Start restoration independently.
+   *
+   * Do not make Express startup depend on every WhatsApp
+   * client reaching READY.
+   */
+
+  for (const session of sessions) {
+    initWhatsAppUser(
+      session.userId
+    ).catch((error) => {
+      logger.error(
+        `[WA:${session.userId}] Restore failed: ${error.message}`
+      );
+    });
+  }
+}
+
+/*
+|--------------------------------------------------------------------------
+| Expose runtime status
+|--------------------------------------------------------------------------
+*/
+
+export function getWhatsAppRuntimeStatus(
+  userId
+) {
+  const key =
+    keyFor(userId);
+
+  return {
+    initialized:
+      clients.has(key),
+
+    ready:
+      readyClients.has(key),
+
+    connected:
+      readyClients.has(key) &&
+      clients.has(key),
+  };
+}
+This fixes the critical lifecycle bug: the runtime client is registered before initialization, but connected only becomes true on ready.
+5. Rewrite WhatsAppSession.js
+Your current model stores the old session object. That should disappear because RemoteAuth now owns authentication persistence. �
+GitHub
+Writing
+// src/models/WhatsAppSession.js
 
 import mongoose from "mongoose";
 
-const leadSchema = new mongoose.Schema(
-  {
-    userId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
-      required: true,
-      index: true,
+const WhatsAppSessionSchema =
+  new mongoose.Schema(
+    {
+      userId: {
+        type:
+          mongoose.Schema.Types.ObjectId,
+
+        required: true,
+
+        unique: true,
+
+        index: true,
+      },
+
+      /*
+      |--------------------------------------------------------------------------
+      | Runtime/application state
+      |--------------------------------------------------------------------------
+      */
+
+      state: {
+        type: String,
+
+        enum: [
+          "DISCONNECTED",
+          "INITIALIZING",
+          "QR_READY",
+          "AUTHENTICATED",
+          "LOADING",
+          "READY",
+          "AUTH_FAILURE",
+          "ERROR",
+        ],
+
+        default: "DISCONNECTED",
+      },
+
+      connected: {
+        type: Boolean,
+
+        default: false,
+      },
+
+      requiresQR: {
+        type: Boolean,
+
+        default: true,
+      },
+
+      qr: {
+        type: String,
+
+        default: null,
+      },
+
+      /*
+      |--------------------------------------------------------------------------
+      | Diagnostics
+      |--------------------------------------------------------------------------
+      */
+
+      lastConnectedAt: {
+        type: Date,
+
+        default: null,
+      },
+
+      lastDisconnectedAt: {
+        type: Date,
+
+        default: null,
+      },
+
+      lastError: {
+        type: String,
+
+        default: null,
+      },
     },
 
-    phone: { type: String, required: true, index: true },
-    name: { type: String, default: "" },
+    {
+      timestamps: true,
+    }
+  );
 
-    // Last incoming message
-    message: { type: String, required: true },
+export default mongoose.model(
+  "WhatsAppSession",
+  WhatsAppSessionSchema
+);
+6. Rewrite whatsapp.service.js
+Your current service is already thin, but we'll make its responsibility explicit. �
+GitHub
+Writing
+// src/services/whatsapp.service.js
 
-    // Intent tracking
-    keywordHitCount: { type: Number, default: 0 },
-    isSerious: { type: Boolean, default: false },
-    hotPoints: { type: Number, default: 0 },
+import {
+  initWhatsAppUser,
+  getClient,
+  isClientReady,
+  getWhatsAppRuntimeStatus,
+} from "./whatsapp.manager.js";
 
-    // AutoReply traceability
-    autoReplyId: { type: mongoose.Schema.Types.ObjectId, ref: "AutoReply" },
-    templateId: { type: mongoose.Schema.Types.ObjectId, ref: "Template" },
-    triggerKeyword: { type: String },
-    matchedSynonym: { type: String, default: null },
+/*
+|--------------------------------------------------------------------------
+| Initialize
+|--------------------------------------------------------------------------
+*/
 
-    // Sales state
-    status: {
-      type: String,
-      enum: ["pending", "contacted", "converted", "cold"],
-      default: "pending",
-    },
+export async function initWhatsAppForUser(
+  userId
+) {
+  return initWhatsAppUser(userId);
+}
 
-    lastReplyMessage: { type: String, default: "" },
-    lastInteractionAt: { type: Date, default: Date.now },
-  },
-  { timestamps: true }
+/*
+|--------------------------------------------------------------------------
+| Runtime client
+|--------------------------------------------------------------------------
+*/
+
+export function getWhatsAppClient(
+  userId
+) {
+  return getClient(userId);
+}
+
+/*
+|--------------------------------------------------------------------------
+| Ready check
+|--------------------------------------------------------------------------
+*/
+
+export function isWhatsAppReady(
+  userId
+) {
+  return isClientReady(userId);
+}
+
+/*
+|--------------------------------------------------------------------------
+| Runtime status
+|--------------------------------------------------------------------------
+*/
+
+export function getWhatsAppStatus(
+  userId
+) {
+  return getWhatsAppRuntimeStatus(
+    userId
+  );
+}
+7. Rewrite whatsapp.send.js
+Your current sender waits for readiness, which is good, but we'll make it the single gateway for all sending. �
+GitHub
+Writing
+// src/services/whatsapp.send.js
+
+import { limiter } from "./messageQueue.js";
+
+import {
+  getClient,
+  waitForClientReady,
+} from "./whatsapp.manager.js";
+
+import {
+  logger,
+} from "../utils/logger.js";
+
+/*
+|--------------------------------------------------------------------------
+| Send one message
+|--------------------------------------------------------------------------
+*/
+
+export async function sendMessage(
+  userId,
+  to,
+  message
+) {
+  await waitForClientReady(
+    userId
+  );
+
+  const client =
+    getClient(userId);
+
+  if (!client) {
+    throw new Error(
+      `WhatsApp client is not READY for user ${userId}`
+    );
+  }
+
+  try {
+    const result =
+      await limiter.schedule(
+        () =>
+          client.sendMessage(
+            to,
+            message
+          )
+      );
+
+    logger.info(
+      `[WA:${userId}] Message sent to ${to}`
+    );
+
+    return result;
+  } catch (error) {
+    logger.error(
+      `[WA:${userId}] Failed to send message to ${to}: ${error.message}`
+    );
+
+    throw error;
+  }
+}
+
+/*
+|--------------------------------------------------------------------------
+| Send broadcast
+|--------------------------------------------------------------------------
+*/
+
+export async function sendBroadcast(
+  userId,
+  recipients = [],
+  message
+) {
+  if (!Array.isArray(recipients)) {
+    throw new TypeError(
+      "Recipients must be an array"
+    );
+  }
+
+  await waitForClientReady(
+    userId
+  );
+
+  const client =
+    getClient(userId);
+
+  if (!client) {
+    throw new Error(
+      `WhatsApp client is not READY for user ${userId}`
+    );
+  }
+
+  const results = [];
+
+  for (const recipient of recipients) {
+    try {
+      const result =
+        await limiter.schedule(
+          () =>
+            client.sendMessage(
+              recipient,
+              message
+            )
+        );
+
+      results.push({
+        recipient,
+        success: true,
+        result,
+      });
+
+      logger.info(
+        `[WA:${userId}] Broadcast sent to ${recipient}`
+      );
+    } catch (error) {
+      results.push({
+        recipient,
+        success: false,
+        error: error.message,
+      });
+
+      logger.error(
+        `[WA:${userId}] Broadcast failed for ${recipient}: ${error.message}`
+      );
+    }
+  }
+
+  return results;
+}
+8. Rewrite broadcast.service.js
+This is important.
+Your existing broadcast service checks MongoDB's connected flag before attempting to use the runtime client. �
+GitHub
+That's the contradiction we're eliminating.
+Writing
+// src/services/broadcast.service.js
+
+import Broadcast from "../models/Broadcast.js";
+
+import {
+  sendMessage,
+} from "./whatsapp.send.js";
+
+import {
+  isClientReady,
+} from "./whatsapp.manager.js";
+
+import {
+  logger,
+} from "../utils/logger.js";
+
+/*
+|--------------------------------------------------------------------------
+| Broadcast
+|--------------------------------------------------------------------------
+*/
+
+export async function broadcastMessage(
+  broadcastId
+) {
+  const broadcast =
+    await Broadcast.findById(
+      broadcastId
+    );
+
+  if (!broadcast) {
+    throw new Error(
+      "Broadcast not found"
+    );
+  }
+
+  const userId =
+    broadcast.userId;
+
+  /*
+  |--------------------------------------------------------------------------
+  | Runtime is the source of truth
+  |--------------------------------------------------------------------------
+  */
+
+  if (!isClientReady(userId)) {
+    throw new Error(
+      `WhatsApp client is not READY for user ${userId}`
+    );
+  }
+
+  let anyFailed = false;
+
+  for (
+    const contactObj of
+    broadcast.contacts
+  ) {
+    try {
+      await sendMessage(
+        userId,
+        contactObj.contact,
+        broadcast.message
+      );
+
+      contactObj.status =
+        "sent";
+
+      contactObj.sentAt =
+        new Date();
+    } catch (error) {
+      contactObj.status =
+        "failed";
+
+      anyFailed = true;
+
+      logger.error(
+        `[Broadcast:${broadcast._id}] Failed to send to ${contactObj.contact}: ${error.message}`
+      );
+    }
+  }
+
+  broadcast.status =
+    anyFailed
+      ? "failed"
+      : "sent";
+
+  broadcast.sentAt =
+    new Date();
+
+  await broadcast.save();
+
+  logger.info(
+    `[Broadcast:${broadcast._id}] Completed for user ${userId} - Status: ${broadcast.status}`
+  );
+}
+9. Rewrite whatsapp.routes.js
+Your current /connect route starts initialization and then immediately writes:
+connected: false,
+requiresQR: true
+That can race against the manager's QR event. �
+GitHub
+Remove that manual state manipulation.
+Writing
+// src/routes/whatsapp.routes.js
+
+import express from "express";
+
+import {
+  protect,
+} from "../middlewares/authMiddleware1.js";
+
+import WhatsAppSession from "../models/WhatsAppSession.js";
+
+import {
+  initWhatsAppForUser,
+  getWhatsAppStatus,
+} from "../services/whatsapp.service.js";
+
+import {
+  destroyClient,
+} from "../services/whatsapp.manager.js";
+
+const router =
+  express.Router();
+
+/*
+|--------------------------------------------------------------------------
+| Connect
+|--------------------------------------------------------------------------
+*/
+
+router.post(
+  "/connect",
+  protect,
+  async (req, res) => {
+    try {
+      const userId =
+        req.user?.id;
+
+      if (!userId) {
+        return res.status(400).json({
+          message:
+            "User ID missing",
+        });
+      }
+
+      /*
+       * Start initialization.
+       *
+       * The manager owns the lifecycle state.
+       */
+      await initWhatsAppForUser(
+        userId
+      );
+
+      const status =
+        getWhatsAppStatus(
+          userId
+        );
+
+      return res.status(202).json({
+        success: true,
+
+        message:
+          "WhatsApp client initialization started",
+
+        status,
+      });
+    } catch (error) {
+      console.error(
+        "[WA ROUTES] /connect error:",
+        error
+      );
+
+      return res.status(500).json({
+        success: false,
+
+        message:
+          "Failed to connect WhatsApp",
+
+        error:
+          error.message,
+      });
+    }
+  }
 );
 
-leadSchema.index({ userId: 1, phone: 1 }, { unique: true });
+/*
+|--------------------------------------------------------------------------
+| Status
+|--------------------------------------------------------------------------
+*/
 
-export const Lead = mongoose.model("Lead", leadSchema);
+router.get(
+  "/status",
+  protect,
+  async (req, res) => {
+    try {
+      const userId =
+        req.user?.id;
 
-✔ No phantom fields
-✔ One lead per phone enforced
-✔ Hot lead logic supported
-
-
----
-
-2️⃣ AUTO-REPLY INTENT EVALUATOR (GATEKEEPER ONLY)
-
-This function does NOT touch the database.
-It only answers: “Did this message show intent?”
-
-import { AutoReply } from "../models/autoReply.js";
-
-export async function evaluateAutoReplyIntent({ userId, message }) {
-  const autoReplies = await AutoReply.find({ userId, isActive: true })
-    .populate("responseTemplate")
-    .sort({ priority: 1 });
-
-  const lowerMessage = message.toLowerCase();
-
-  for (const reply of autoReplies) {
-    for (const kw of reply.keywords) {
-      const terms = [kw.word, ...(kw.synonyms || [])];
-
-      for (const term of terms) {
-        if (matchMessage(term, lowerMessage, kw.matchType)) {
-          return {
-            matched: true,
-            autoReplyId: reply._id,
-            templateId: reply.responseTemplate?._id || null,
-            replyContent: reply.responseTemplate?.content || "",
-            triggerKeyword: kw.word,
-            matchedSynonym: term !== kw.word ? term : null,
-            hotPoints: kw.points || 0,
-          };
-        }
+      if (!userId) {
+        return res.status(400).json({
+          message:
+            "User ID missing",
+        });
       }
+
+      let session =
+        await WhatsAppSession.findOne({
+          userId,
+        });
+
+      if (!session) {
+        session =
+          await WhatsAppSession.create({
+            userId,
+          });
+      }
+
+      const runtime =
+        getWhatsAppStatus(
+          userId
+        );
+
+      return res.json({
+        ...session.toObject(),
+
+        runtime,
+      });
+    } catch (error) {
+      console.error(
+        "[WA ROUTES] /status error:",
+        error
+      );
+
+      return res.status(500).json({
+        message:
+          "Failed to fetch WhatsApp status",
+
+        error:
+          error.message,
+      });
     }
   }
+);
 
-  return { matched: false };
-}
+/*
+|--------------------------------------------------------------------------
+| QR
+|--------------------------------------------------------------------------
+*/
 
-function matchMessage(keyword, message, matchType) {
-  keyword = keyword.toLowerCase();
+router.get(
+  "/qr",
+  protect,
+  async (req, res) => {
+    try {
+      const userId =
+        req.user?.id;
 
-  switch (matchType) {
-    case "contains":
-      return message.includes(keyword);
-    case "exact":
-      return message === keyword;
-    case "startsWith":
-      return message.startsWith(keyword);
-    case "word":
-      return message.split(/\s+/).includes(keyword);
-    default:
-      return false;
-  }
-}
+      if (!userId) {
+        return res.status(400).json({
+          message:
+            "User ID missing",
+        });
+      }
 
-✔ Your keyword intelligence preserved
-✔ Priority preserved
-✔ Clean responsibility
+      const session =
+        await WhatsAppSession.findOne({
+          userId,
+        });
 
+      if (!session) {
+        return res.status(404).json({
+          message:
+            "Session not found",
+        });
+      }
 
----
+      if (!session.qr) {
+        return res.status(404).json({
+          message:
+            "QR not available",
+        });
+      }
 
-3️⃣ LEAD RESOLVER (INTENT ACCUMULATOR)
+      return res.json({
+        qr: session.qr,
+      });
+    } catch (error) {
+      console.error(
+        "[WA ROUTES] /qr error:",
+        error
+      );
 
-This is where one lead is created or updated.
+      return res.status(500).json({
+        message:
+          "Failed to fetch QR",
 
-import { Lead } from "../models/Lead.js";
-
-export async function resolveLeadFromIntent({
-  userId,
-  phone,
-  message,
-  intent,
-}) {
-  const now = new Date();
-
-  let lead = await Lead.findOne({ userId, phone });
-
-  if (!lead) {
-    // FIRST INTENT → CREATE LEAD
-    lead = await Lead.create({
-      userId,
-      phone,
-      message,
-      keywordHitCount: 1,
-      hotPoints: intent.hotPoints,
-      isSerious: false,
-      autoReplyId: intent.autoReplyId,
-      templateId: intent.templateId,
-      triggerKeyword: intent.triggerKeyword,
-      matchedSynonym: intent.matchedSynonym,
-      lastReplyMessage: intent.replyContent,
-      lastInteractionAt: now,
-    });
-  } else {
-    // FOLLOW-UP INTENT → UPDATE LEAD
-    lead.message = message;
-    lead.keywordHitCount += 1;
-    lead.hotPoints += intent.hotPoints;
-    lead.autoReplyId = intent.autoReplyId;
-    lead.templateId = intent.templateId;
-    lead.triggerKeyword = intent.triggerKeyword;
-    lead.matchedSynonym = intent.matchedSynonym;
-    lead.lastReplyMessage = intent.replyContent;
-    lead.lastInteractionAt = now;
-
-    if (lead.keywordHitCount >= 3) {
-      lead.isSerious = true;
+        error:
+          error.message,
+      });
     }
-
-    await lead.save();
   }
+);
 
-  return lead;
+/*
+|--------------------------------------------------------------------------
+| Disconnect
+|--------------------------------------------------------------------------
+*/
+
+router.post(
+  "/disconnect",
+  protect,
+  async (req, res) => {
+    try {
+      const userId =
+        req.user?.id;
+
+      if (!userId) {
+        return res.status(400).json({
+          message:
+            "User ID missing",
+        });
+      }
+
+      /*
+       * logout=true means intentional disconnect.
+       *
+       * For RemoteAuth this removes the remote authentication
+       * archive, so the next connection requires QR again.
+       */
+      await destroyClient(
+        userId,
+        true
+      );
+
+      return res.json({
+        success: true,
+
+        message:
+          "WhatsApp disconnected",
+      });
+    } catch (error) {
+      console.error(
+        "[WA ROUTES] /disconnect error:",
+        error
+      );
+
+      return res.status(500).json({
+        success: false,
+
+        message:
+          "Failed to disconnect WhatsApp",
+
+        error:
+          error.message,
+      });
+    }
+  }
+);
+
+export default router;
+10. Rewrite server.js
+Your current server waits for all WhatsApp restoration before starting the broadcast scheduler. �
+GitHub
+That isn't what we want.
+WhatsApp restoration should happen in the background.
+Writing
+// src/server.js
+
+import dotenv from "dotenv";
+
+dotenv.config();
+
+import app from "./app.js";
+
+import connectDB from "./config/db.js";
+
+import {
+  initAllWhatsAppUsers,
+} from "./services/whatsapp.manager.js";
+
+import {
+  startBroadcastScheduler,
+} from "./jobs/broadcastScheduler.js";
+
+import {
+  logger,
+} from "./utils/logger.js";
+
+/*
+|--------------------------------------------------------------------------
+| Global error handlers
+|--------------------------------------------------------------------------
+*/
+
+process.on(
+  "uncaughtException",
+  (error) => {
+    logger.error(
+      `Uncaught Exception: ${error.message}`
+    );
+
+    console.error(
+      error.stack
+    );
+
+    process.exit(1);
+  }
+);
+
+process.on(
+  "unhandledRejection",
+  (reason) => {
+    logger.error(
+      `Unhandled Rejection: ${reason}`
+    );
+  }
+);
+
+/*
+|--------------------------------------------------------------------------
+| Server bootstrap
+|--------------------------------------------------------------------------
+*/
+
+async function startServer() {
+  try {
+    /*
+    |--------------------------------------------------------------------------
+    | 1. Database
+    |--------------------------------------------------------------------------
+    */
+
+    await connectDB();
+
+    logger.info(
+      "MongoDB connected successfully"
+    );
+
+    /*
+    |--------------------------------------------------------------------------
+    | 2. HTTP server
+    |--------------------------------------------------------------------------
+    */
+
+    const PORT =
+      process.env.PORT ||
+      5000;
+
+    app.listen(
+      PORT,
+      () => {
+        logger.info(
+          `Backend running on port ${PORT}`
+        );
+
+        console.log(
+          `Backend running on port ${PORT}`
+        );
+      }
+    );
+
+    /*
+    |--------------------------------------------------------------------------
+    | 3. Broadcast scheduler
+    |--------------------------------------------------------------------------
+    */
+
+    startBroadcastScheduler();
+
+    logger.info(
+      "Broadcast scheduler started"
+    );
+
+    /*
+    |--------------------------------------------------------------------------
+    | 4. Restore WhatsApp clients
+    |--------------------------------------------------------------------------
+    |
+    | IMPORTANT:
+    |
+    | Do NOT await this.
+    |
+    | Express must remain available even while WhatsApp clients
+    | are restoring from Supabase.
+    |
+    */
+
+    initAllWhatsAppUsers()
+      .then(() => {
+        logger.info(
+          "WhatsApp restoration process started"
+        );
+      })
+      .catch((error) => {
+        logger.error(
+          `WhatsApp restoration failed: ${error.message}`
+        );
+      });
+  } catch (error) {
+    logger.error(
+      `Server startup failed: ${error.message}`
+    );
+
+    console.error(error);
+
+    process.exit(1);
+  }
 }
 
-✔ One lead per person
-✔ Intent accumulates
-✔ Hot lead auto-escalation
-✔ No duplicates
+startServer();
+11. app.js
+Your app.js only needs the MongoDB session fix we already made.
+Do not move Express sessions to Supabase.
+Your architecture remains:
+express-session
+      ↓
+connect-mongodb-session
+      ↓
+MongoDB
+That's completely separate from WhatsApp authentication.
+12. .env for development
+This is the important part.
+Your development .env can remain:
+NODE_ENV=development
 
+MONGO_URI=your_mongodb_uri
 
----
+SESSION_SECRET=your_session_secret
 
-4️⃣ FINAL MESSAGE HANDLER (THE ONLY ENTRY POINT)
+PORT=5000
+Do not add Supabase credentials just to run locally.
+The manager sees:
+process.env.NODE_ENV !== "production"
+and uses:
+LocalAuth
+instead.
+So development remains:
+npm run dev
+      ↓
+LocalAuth
+      ↓
+.wwebjs_auth/
+13. Render production environment
+On Render, set:
+NODE_ENV=production
 
-This is what your WhatsApp listener must call.
+MONGO_URI=...
 
-import { evaluateAutoReplyIntent } from "./evaluateAutoReplyIntent.js";
-import { resolveLeadFromIntent } from "./resolveLeadFromIntent.js";
+SESSION_SECRET=...
 
-export async function handleIncomingMessage({ userId, phone, message, sendMessage }) {
-  // 1. Evaluate intent
-  const intent = await evaluateAutoReplyIntent({ userId, message });
+SUPABASE_URL=...
 
-  if (!intent.matched) {
-    // No intent → no lead → no reply
-    return { lead: null, autoReplied: false };
+SUPABASE_SERVICE_ROLE_KEY=...
+
+SUPABASE_WHATSAPP_BUCKET=whatsapp-sessions
+
+WHATSAPP_BACKUP_INTERVAL_MS=300000
+You do not put:
+SUPABASE_SERVICE_ROLE_KEY
+into your frontend.
+It belongs exclusively on the backend.
+14. Create the Supabase bucket
+In Supabase Storage create:
+whatsapp-sessions
+Make it private.
+You don't need to create a folder for every user manually.
+The adapter will create paths like:
+whatsapp-sessions/
+│
+├── RemoteAuth-123/
+│   └── RemoteAuth-123.zip
+│
+├── RemoteAuth-456/
+│   └── RemoteAuth-456.zip
+│
+└── RemoteAuth-789/
+    └── RemoteAuth-789.zip
+Because clientId is the user ID, each WhatsApp account gets its own RemoteAuth archive.
+15. One package change
+Your current WA2 package has whatsapp-web.js@^1.34.4, Puppeteer and Puppeteer Core, but no Supabase SDK. �
+GitHub
+Run:
+npm install @supabase/supabase-js
+Do not install:
+npm install chromium
+for this change.
+Your existing Puppeteer dependency remains responsible for the browser.
+16. What happens now
+Development
+You scan:
+QR
+ ↓
+LocalAuth
+ ↓
+.wwebjs_auth/RemoteAuth-userId
+ ↓
+READY
+ ↓
+Mongo:
+state = READY
+connected = true
+Broadcast:
+broadcast
+ ↓
+isClientReady(userId)
+ ↓
+clients Map
+ ↓
+readyClients
+ ↓
+sendMessage()
+Production
+You scan:
+QR
+ ↓
+RemoteAuth
+ ↓
+READY
+ ↓
+RemoteAuth creates archive
+ ↓
+Supabase Storage
+RemoteAuth's own implementation intentionally performs an initial delayed synchronization and then periodic backups; the configured backup interval must be at least 60 seconds. �
+GitHub
+Then Render restarts:
+Render restart
+       ↓
+local filesystem gone
+       ↓
+RemoteAuth
+       ↓
+Supabase
+       ↓
+download RemoteAuth-userId.zip
+       ↓
+extract
+       ↓
+WhatsApp Web
+       ↓
+READY
+       ↓
+broadcast works
+That is exactly the behavior you wanted.
+One critical testing sequence
+Don't immediately deploy this.
+Test development first:
+npm install
+npm run dev
+Then:
+Connect WhatsApp.
+Scan QR.
+Wait until /status says:
+{
+  "state": "READY",
+  "connected": true,
+  "runtime": {
+    "initialized": true,
+    "ready": true,
+    "connected": true
   }
-
-  // 2. Resolve lead
-  const lead = await resolveLeadFromIntent({
-    userId,
-    phone,
-    message,
-    intent,
-  });
-
-  // 3. Send auto-reply
-  if (intent.replyContent) {
-    await sendMessage(phone, intent.replyContent);
-  }
-
-  return { lead, autoReplied: true };
 }
-
-✔ Clean
-✔ Predictable
-✔ Testable
-✔ Zero fragmentation
-
-
----
-
-5️⃣ WHAT WE DELIBERATELY DID NOT TOUCH
-
-Lead routes (GET / PATCH still valid)
-
-Lead.tsx assumptions
-
-Broadcast logic
-
-WhatsApp client internals
-
-UI flow
-
-
-
----
-
-🧠 FINAL MENTAL MODEL (DO NOT BREAK THIS)
-
-> AutoReply detects intent → Lead accumulates intent → Hot lead is earned
-
-
-
-This backend is now:
-
-Deterministic
-
-Sales-aligned
-
-Scalable
-
-Debuggable
-
-Free of silent bugs
-
-
-
----
-
-NEXT STEP (ONLY ONE)
-
-👉 Paste Lead.tsx
-
-I will:
-
-Wire hot vs normal leads visually
-
-Add zero new business logic
-
-Keep backend untouched
-
-Ensure UI reflects intent accurately
+Send a broadcast.
+Stop Node.
+Start Node again.
+No QR should be required in development.
+Then production:
+Render deployment
+      ↓
+QR once
+      ↓
+READY
+      ↓
+Supabase archive appears
+      ↓
+restart Render
+      ↓
+READY without QR
+      ↓
+broadcast
+One caveat
+The Supabase adapter above is deliberately built around the actual RemoteAuth store contract in your installed whatsapp-web.js family: sessionExists, save, extract, and delete. �
+GitHub
+But I would not call this production-complete until we run the first session through it. RemoteAuth is doing the local ZIP creation internally, so the first production test should specifically verify that the ZIP reaches Supabase and that a restart successfully downloads and extracts it. That's the part that proves Render's ephemeral filesystem is no longer a single point of failure.
+The core rewrite, however, is now clean: **LocalAuth in development, Supabase-backed RemoteAuth in production, MongoDB for application state, and the runtime manager as the only authority for WhatsApp readiness.**

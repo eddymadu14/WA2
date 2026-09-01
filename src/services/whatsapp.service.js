@@ -1,15 +1,57 @@
-import { initWhatsAppUser, getClient } from "./whatsapp.manager.js";
 
-/**
- * Initialize WhatsApp for a user
- * Returns the single shared client from manager
- */
-export async function initWhatsAppForUser(userId, sessionData = null) {
-  // If client already exists, return it
-  let client = getClient(userId);
-  if (client) return client;
+import {
+  initWhatsAppUser,
+  getClient,
+  isClientReady,
+  getWhatsAppRuntimeStatus,
+} from "./whatsapp.manager.js";
 
-  // Otherwise, initialize through manager
-  client = await initWhatsAppUser(userId, sessionData);
-  return client;
+/*
+|--------------------------------------------------------------------------
+| Initialize
+|--------------------------------------------------------------------------
+*/
+
+export async function initWhatsAppForUser(
+  userId
+) {
+  return initWhatsAppUser(userId);
+}
+
+/*
+|--------------------------------------------------------------------------
+| Runtime client
+|--------------------------------------------------------------------------
+*/
+
+export function getWhatsAppClient(
+  userId
+) {
+  return getClient(userId);
+}
+
+/*
+|--------------------------------------------------------------------------
+| Ready check
+|--------------------------------------------------------------------------
+*/
+
+export function isWhatsAppReady(
+  userId
+) {
+  return isClientReady(userId);
+}
+
+/*
+|--------------------------------------------------------------------------
+| Runtime status
+|--------------------------------------------------------------------------
+*/
+
+export function getWhatsAppStatus(
+  userId
+) {
+  return getWhatsAppRuntimeStatus(
+    userId
+  );
 }

@@ -3122,3 +3122,23 @@
 [INFO] [2026-01-08T12:20:41.543Z] [WA:695932168a9879344ba3c854] Ready
 [WARN] [2026-01-08T12:20:45.052Z] [WA:695932168a9879344ba3c854] Disconnected: LOGOUT
 [INFO] [2026-01-08T12:20:58.317Z] [WA:695932168a9879344ba3c854] QR generated
+[INFO] [2026-09-01T15:14:32.492Z] Message queue initialized
+[INFO] [2026-09-01T15:14:33.967Z] MongoDB connected successfully
+[INFO] [2026-09-01T15:14:33.989Z] Backend running on port 5000
+[INFO] [2026-09-01T15:14:33.970Z] Broadcast scheduler started
+[INFO] [2026-09-01T15:14:34.046Z] WhatsApp restoration process started
+[INFO] [2026-09-01T15:14:34.043Z] [WA] Restoring 1 WhatsApp clients
+[INFO] [2026-09-01T15:14:34.059Z] [WA:6a937df3c4b9abe7cc4526b5] Using LocalAuth for development
+[INFO] [2026-09-01T15:14:34.060Z] [WA:6a937df3c4b9abe7cc4526b5] Initializing client
+[INFO] [2026-09-01T15:14:50.618Z] [WA:6a937df3c4b9abe7cc4526b5] QR generated
+[INFO] [2026-09-01T15:14:50.736Z] [WA:6a937df3c4b9abe7cc4526b5] initialize() completed; waiting for READY
+[INFO] [2026-09-01T15:16:06.627Z] [WA:6a937df3c4b9abe7cc4526b5] Authenticated
+[INFO] [2026-09-01T15:16:06.630Z] [WA:6a937df3c4b9abe7cc4526b5] Authenticated
+[INFO] [2026-09-01T15:16:06.634Z] [WA:6a937df3c4b9abe7cc4526b5] Authenticated
+[ERROR] [2026-09-01T15:17:05.374Z] Broadcast error:
+[INFO] [2026-09-01T15:18:07.506Z] Message queue initialized
+[INFO] [2026-09-01T15:18:10.241Z] MongoDB connected successfully
+[INFO] [2026-09-01T15:18:10.256Z] Backend running on port 5000
+[INFO] [2026-09-01T15:18:10.244Z] Broadcast scheduler started
+[INFO] [2026-09-01T15:18:10.331Z] [WA] Restoring 0 WhatsApp clients
+[INFO] [2026-09-01T15:18:10.332Z] WhatsApp restoration process started
